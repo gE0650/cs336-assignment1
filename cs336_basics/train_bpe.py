@@ -140,53 +140,72 @@ def train_bpe(
         vocab[256 + i] = special_tokens_bytes[i]
         current_vocab_size += 1
 
-    # initial pairs_count
-    pairs_count = {}
-    all_tokens = []
+    # merge step
 
+    words_tokens = [] # list[list[bytes]]
+    words_freqency = {} # dict[int, int]
+
+    pairs_count = {}  # dict[tuple[bytes, bytes], int]
+    pair_to_word = {} # dict[tuple[bytes, bytes], set[int]]
+
+    # initialize words_bytes & words_frequency
     for (pre_token, num_of_pre_token) in pre_tokens.items():
-        all_tokens.append(([bytes([b]) for b in pre_token], num_of_pre_token))
+        word_as_bytes = [bytes([b]) for b in pre_token]
+        words_tokens.append(word_as_bytes)
+        words_freqency[len(words_tokens) - 1] = num_of_pre_token
         
+    # initialize pairs_count & pair_to_word
+    for (i, word_tokens) in enumerate(words_tokens):
+        token_pair = list(zip(word_tokens, word_tokens[1:]))
+        for pair in token_pair:
+            pairs_count[pair] = pairs_count.get(pair, 0) + words_freqency[i]
+            if pair not in pair_to_word:
+                pair_to_word[pair] = set()
+            pair_to_word[pair].add(i)
 
-    while current_vocab_size < vocab_size:
-
-        pairs_count = {}
-        
-        for (tokens, num_of_pre_token) in all_tokens:
-            token_pair = list(zip(tokens, tokens[1:]))
-            for pair in token_pair:
-                pairs_count[pair] = pairs_count.get(pair, 0) + num_of_pre_token
-        
+    while current_vocab_size < vocab_size:    
         if not pairs_count:
             break
 
-        best_pair, best_count = max(pairs_count.items(), key=lambda item: (item[1], item[0]))
+        best_pair, _ = max(pairs_count.items(), key=lambda item: (item[1], item[0]))
 
         vocab[current_vocab_size] = best_pair[0] + best_pair[1]
         current_vocab_size += 1
         merges.append(best_pair)
 
-        new_all_tokens = []
-
-        for tokens, num_of_pre_token in all_tokens:
+        for i in pair_to_word[best_pair]:
+            tokens = words_tokens[i]
+            j = 0
             new_tokens = []
-
-            i = 0
-            while i < len(tokens):
-                if (
-                    i + 1 < len(tokens)
-                    and tokens[i] == best_pair[0]
-                    and tokens[i + 1] == best_pair[1]
-                ):
+            while j < len(tokens):
+                if j + 1 < len(tokens) and tokens[j] == best_pair[0] and tokens[j + 1] == best_pair[1]:
                     new_tokens.append(best_pair[0] + best_pair[1])
-                    i += 2
+                    j += 2
                 else:
-                    new_tokens.append(tokens[i])
-                    i += 1
+                    new_tokens.append(tokens[j])
+                    j += 1
+            words_tokens[i] = new_tokens
 
-            new_all_tokens.append((new_tokens, num_of_pre_token))
+            # update pairs_count
+            pairs_old = {}
+            pairs_new = {}
+            for pair in list(zip(tokens, tokens[1:])):
+                pairs_old[pair] = pairs_old.get(pair, 0) + 1
+            for pair in list(zip(new_tokens, new_tokens[1:])):
+                pairs_new[pair] = pairs_new.get(pair, 0) + 1
 
-        all_tokens = new_all_tokens
+            for (pair, num) in pairs_new.items():
+                pairs_count[pair] = pairs_count.get(pair, 0) + num * words_freqency[i]
+                if pair not in pair_to_word:
+                    pair_to_word[pair] = set()
+                pair_to_word[pair].add(i)
+
+            for (pair, num) in pairs_old.items():
+                pairs_count[pair] -= num * words_freqency[i]
+                if pairs_count[pair] <= 0:
+                    del pairs_count[pair]
+            
+
 
         
     
