@@ -3,6 +3,8 @@ import regex as re
 from typing import BinaryIO
 from multiprocessing import Pool
 
+PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
 def find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
@@ -55,9 +57,7 @@ def find_chunk_boundaries(
                 chunk_boundaries[bi] = initial_position + found_at
                 break
 
-            initial_position += mini_chunk_size
-
-            
+            initial_position += mini_chunk_size  
 
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     chunk_boundaries = sorted(set(chunk_boundaries))
@@ -114,7 +114,7 @@ def train_bpe(
             f.seek(chunk_boundaries[i - 1])
             chunks.append(f.read(chunk_boundaries[i] - chunk_boundaries[i - 1]))
 
-    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    
 
     # count num of pre_tokens
     
