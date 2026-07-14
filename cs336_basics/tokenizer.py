@@ -42,43 +42,56 @@ class Tokenizer:
 
         if self.special_tokens:
             escaped_tokens = [re.escape(token) for token in self.special_tokens]
+            escaped_tokens.sort(key=len, reverse=True)
             separator_pattern = "(" + "|".join(escaped_tokens) + ")"
             text_parts = re.split(separator_pattern, text)
         else:
             text_parts = [text]
 
-        tokens_bytes = []
+        ids = []
+        #tokens_bytes = []
+        bytes_id = {token: id for (id, token) in self.vocab.items()}
+
         for text_part in text_parts:
             if self.special_tokens and (text_part in self.special_tokens):
-                tokens_bytes.append(text_part.encode("utf-8"))
+                ids.append(bytes_id[text_part.encode("utf-8")])
             else:
                 for match in re.finditer(PAT, text_part):
+                    token_bytes = []
                     for letter in match.group(0):
-                        tokens_bytes.append(letter.encode("utf-8"))
+                        letter_bytes = letter.encode("utf-8")
+                        pieces = [bytes([byte_value]) for byte_value in letter_bytes]
+                        token_bytes += pieces
         
-        for merge in self.merges:
-            pairs = list(zip(tokens_bytes, tokens_bytes[1:]))
-            i = 0
-            while i < len(pairs) - 1:
-                pair = pairs[i]
-                if pair == merge:
-                    tokens_bytes[i] = tokens_bytes[i] + tokens_bytes[i + 1]
-                    del tokens_bytes[i + 1]
-                    i += 1
-                i += 1
+                    for merge in self.merges:
+                        pairs = list(zip(token_bytes, token_bytes[1:]))
+                        i = 0
+                        while i < len(pairs):
+                            pair = pairs[i]
+                            if pair == merge:
+                                token_bytes[i] = token_bytes[i] + token_bytes[i + 1]
+                                del token_bytes[i + 1]
+                                pairs = list(zip(token_bytes, token_bytes[1:]))
+                            i += 1
+                
+                    ids.extend([bytes_id[token] for token in token_bytes])
 
-        bytes_id = {token: id for (id, token) in self.vocab.items()}
         
-        return [bytes_id[token] for token in tokens_bytes]
+        
+        return ids
             
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
-        chunks = pretoken_from_chunk(PAT, text.encode("utf-8"), self.special_tokens)
-        return [i for i in chunk for chunk in chunks]
+        for chunk in iterable:
+            encoded_chunk = (self.encode(chunk))
+            for id in encoded_chunk:
+                yield id
+        
+        
 
 
     def decode(self, ids: list[int]) -> str:
-        text = ""
+        all_bytes = bytes()
         for id in ids:
-            text += self.vocab[id].decode("utf-8")
+            all_bytes += self.vocab[id]
         
-        return text
+        return all_bytes.decode("utf-8", errors="replace")
