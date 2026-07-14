@@ -66,7 +66,7 @@ def find_chunk_boundaries(
 def pretoken_from_chunk(
     PAT: str,
     chunk: bytes,
-    special_tokens: list[str],
+    special_tokens: list[str] | None = None
 ) -> dict[bytes, int]:
 
     text = chunk.decode("utf-8")

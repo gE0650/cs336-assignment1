@@ -1,5 +1,6 @@
 from collections.abc import Iterable, Iterator
 import json
+import regex as re
 from tests.common import gpt2_bytes_to_unicode
 from cs336_basics.train_bpe import pretoken_from_chunk, PAT
 
@@ -38,9 +39,38 @@ class Tokenizer:
             return cls(vocab, merges, special_tokens)
 
     def encode(self, text: str) -> list[int]:
-        chunks = pretoken_from_chunk(PAT, text.encode("utf-8"), self.special_tokens)
-        return [i for i in chunk for chunk in chunks]
 
+        if self.special_tokens:
+            escaped_tokens = [re.escape(token) for token in self.special_tokens]
+            separator_pattern = "(" + "|".join(escaped_tokens) + ")"
+            text_parts = re.split(separator_pattern, text)
+        else:
+            text_parts = [text]
+
+        tokens_bytes = []
+        for text_part in text_parts:
+            if self.special_tokens and (text_part in self.special_tokens):
+                tokens_bytes.append(text_part.encode("utf-8"))
+            else:
+                for match in re.finditer(PAT, text_part):
+                    for letter in match.group(0):
+                        tokens_bytes.append(letter.encode("utf-8"))
+        
+        for merge in self.merges:
+            pairs = list(zip(tokens_bytes, tokens_bytes[1:]))
+            i = 0
+            while i < len(pairs) - 1:
+                pair = pairs[i]
+                if pair == merge:
+                    tokens_bytes[i] = tokens_bytes[i] + tokens_bytes[i + 1]
+                    del tokens_bytes[i + 1]
+                    i += 1
+                i += 1
+
+        bytes_id = {token: id for (id, token) in self.vocab.items()}
+        
+        return [bytes_id[token] for token in tokens_bytes]
+            
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
         chunks = pretoken_from_chunk(PAT, text.encode("utf-8"), self.special_tokens)
         return [i for i in chunk for chunk in chunks]
