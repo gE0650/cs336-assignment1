@@ -62,3 +62,19 @@ class RMSNorm(torch.nn.Module):
         inv_rms = 1 / rms
         x_scaled = einops.einsum(x, self.weight, inv_rms, "... d_model, d_model, ... -> ... d_model")
         return x_scaled.to(in_type)
+    
+class SwiGLU(torch.nn.Module):
+    def __init__(self,
+                 d_model: int,
+                 d_ff: int):
+        super().__init__()
+
+        self.w1 = Linear(d_model, d_ff)
+        self.w2 = Linear(d_ff, d_model)
+        self.w3 = Linear(d_model, d_ff)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        mid1 = einops.einsum(self.w1.weight, x, "out in, ... in -> ... out")
+        mid2 = mid1 * torch.sigmoid(mid1)
+        mid3 = einops.einsum(self.w3.weight, x, "out in, ... in -> ... out")
+        return einops.einsum(mid2 * mid3, self.w2.weight, "... in, out in -> ... out")
