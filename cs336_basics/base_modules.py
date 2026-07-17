@@ -115,3 +115,19 @@ def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
     x_shifted = x - x_max
     exp_x = torch.exp(x_shifted)
     return exp_x / torch.sum(exp_x, dim=dim, keepdim=True)
+
+def scaled_dot_product_attention(
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        mask: torch.Tensor | None = None
+):
+    weights = einops.einsum(queries, keys, "... q_len d_k, ... k_len d_k" \
+                            " -> ... q_len k_len") / math.sqrt(keys.shape[-1])
+    if mask is not None:
+        weights[~mask] = -math.inf
+    weights = softmax(weights, dim=-1)
+    output = einops.einsum(weights, values, "... q_len k_len, ... k_len d_v" \
+    " -> ... q_len d_v")
+
+    return output
