@@ -86,12 +86,12 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         super().__init__()
 
         self.theta = theta
-        cos = torch.zeros((max_seq_len, d_k // 2), device=device)
-        sin = torch.zeros((max_seq_len, d_k // 2), device=device)
-        for i in range(max_seq_len):
-            for j in range(d_k // 2):
-                cos[i][j] = math.cos(i * (theta ** -((2 * j) / d_k)))
-                sin[i][j] = math.sin(i * (theta ** -((2 * j) / d_k)))
+        positions = torch.arange(max_seq_len, device=device)
+        dims = torch.arange(d_k // 2, device=device)
+        thetas = (theta ** -(2 * dims / d_k))[None, :] * positions[:, None]
+        cos = torch.cos(thetas)
+        sin = torch.sin(thetas)
+
 
         self.register_buffer("cos_cached", cos, persistent=False)
         self.register_buffer("sin_cached", sin, persistent=False)
@@ -109,3 +109,9 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         out = torch.stack([new_odd, new_even], dim=-1)
         out = einops.rearrange(out, "... seq_len d_pair two -> ... seq_len (d_pair two)")
         return out
+
+def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+    x_max = torch.max(x, dim=dim, keepdim=True).values
+    x_shifted = x - x_max
+    exp_x = torch.exp(x_shifted)
+    return exp_x / torch.sum(exp_x, dim=dim, keepdim=True)
