@@ -125,9 +125,76 @@ def scaled_dot_product_attention(
     weights = einops.einsum(queries, keys, "... q_len d_k, ... k_len d_k" \
                             " -> ... q_len k_len") / math.sqrt(keys.shape[-1])
     if mask is not None:
-        weights[~mask] = -math.inf
+        weights[..., ~mask] = -math.inf
     weights = softmax(weights, dim=-1)
     output = einops.einsum(weights, values, "... q_len k_len, ... k_len d_v" \
     " -> ... q_len d_v")
 
     return output
+
+class MultiheadSelfAttention(torch.nn.Module):
+    def __init__(self, d_model: int, num_heads: int):
+        super().__init__()
+        self.d_k = d_model // num_heads
+        self.num_heads = num_heads
+
+        self.W_Q = Linear(d_model, self.d_k * num_heads)
+        self.W_K = Linear(d_model, self.d_k * num_heads)
+        self.W_V = Linear(d_model, self.d_k * num_heads)
+        self.W_O = Linear(self.d_k * num_heads, d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        Q = self.W_Q(x)
+        K = self.W_K(x)
+        V = self.W_V(x)
+
+        seq_len = x.shape[-2]
+        q_positions = torch.arange(seq_len)[:, None]
+        k_positions = torch.arange(seq_len)[None, :]
+        mask = k_positions <= q_positions # presume x is on CPU
+
+        Attn_res = []
+        for i in range(self.num_heads):
+            q = Q[..., i * self.d_k : (i + 1) * self.d_k]
+            k = K[..., i * self.d_k : (i + 1) * self.d_k]
+            v = V[..., i * self.d_k : (i + 1) * self.d_k]
+
+            Attn_res.append(scaled_dot_product_attention(q, k, v, mask))
+
+        output = torch.concat(Attn_res, dim=-1)
+        return self.W_O(output)
+
+class MultiheadSelfAttentionWithRoPE(torch.nn.Module):
+    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta: float, ):
+        super().__init__()
+        self.d_k = d_model // num_heads
+        self.num_heads = num_heads
+        self.RoPE = RotaryPositionalEmbedding(theta, self.d_k, max_seq_len)
+
+        self.W_Q = Linear(d_model, self.d_k * num_heads)
+        self.W_K = Linear(d_model, self.d_k * num_heads)
+        self.W_V = Linear(d_model, self.d_k * num_heads)
+        self.W_O = Linear(self.d_k * num_heads, d_model)
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+        Q = self.W_Q(x)
+        K = self.W_K(x)
+        V = self.W_V(x)
+
+        seq_len = x.shape[-2]
+        q_positions = torch.arange(seq_len)[:, None]
+        k_positions = torch.arange(seq_len)[None, :]
+        mask = k_positions <= q_positions # presume x is on CPU
+
+        Attn_res = []
+        for i in range(self.num_heads):
+            q = Q[..., i * self.d_k : (i + 1) * self.d_k]
+            k = K[..., i * self.d_k : (i + 1) * self.d_k]
+            v = V[..., i * self.d_k : (i + 1) * self.d_k]
+            q = self.RoPE(q, token_positions)
+            k = self.RoPE(k, token_positions)
+
+            Attn_res.append(scaled_dot_product_attention(q, k, v, mask))
+
+        output = torch.concat(Attn_res, dim=-1)
+        return self.W_O(output)
