@@ -1,5 +1,6 @@
 import torch
 import einops
+import math
 
 class Linear(torch.nn.Module):
     def __init__(self,
@@ -78,3 +79,33 @@ class SwiGLU(torch.nn.Module):
         mid2 = mid1 * torch.sigmoid(mid1)
         mid3 = einops.einsum(self.w3.weight, x, "out in, ... in -> ... out")
         return einops.einsum(mid2 * mid3, self.w2.weight, "... in, out in -> ... out")
+    
+
+class RotaryPositionalEmbedding(torch.nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
+        super().__init__()
+
+        self.theta = theta
+        cos = torch.zeros((max_seq_len, d_k // 2), device=device)
+        sin = torch.zeros((max_seq_len, d_k // 2), device=device)
+        for i in range(max_seq_len):
+            for j in range(d_k // 2):
+                cos[i][j] = math.cos(i * (theta ** -((2 * j) / d_k)))
+                sin[i][j] = math.sin(i * (theta ** -((2 * j) / d_k)))
+
+        self.register_buffer("cos_cached", cos, persistent=False)
+        self.register_buffer("sin_cached", sin, persistent=False)
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+        x = einops.rearrange(x, "... seq_len (d_pair two) -> ... seq_len d_pair two", two=2)
+        #x_odd = einops.rearrange(x[..., 0], "... d 1 -> ... (d 1)")
+        #x_even = einops.rearrange(x[..., 1], "... d 1 -> ... (d 1)")
+        x_odd = x[..., 0]
+        x_even = x[..., 1]
+        
+        new_odd = x_odd * self.cos_cached[token_positions] - x_even * self.sin_cached[token_positions]
+        new_even = x_odd * self.sin_cached[token_positions] + x_even * self.cos_cached[token_positions]
+        
+        out = torch.stack([new_odd, new_even], dim=-1)
+        out = einops.rearrange(out, "... seq_len d_pair two -> ... seq_len (d_pair two)")
+        return out
