@@ -138,15 +138,15 @@ class MultiheadSelfAttention(torch.nn.Module):
         self.d_k = d_model // num_heads
         self.num_heads = num_heads
 
-        self.W_Q = Linear(d_model, self.d_k * num_heads)
-        self.W_K = Linear(d_model, self.d_k * num_heads)
-        self.W_V = Linear(d_model, self.d_k * num_heads)
-        self.W_O = Linear(self.d_k * num_heads, d_model)
+        self.q_proj = Linear(d_model, self.d_k * num_heads)
+        self.k_proj = Linear(d_model, self.d_k * num_heads)
+        self.v_proj = Linear(d_model, self.d_k * num_heads)
+        self.output_proj = Linear(self.d_k * num_heads, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        Q = self.W_Q(x)
-        K = self.W_K(x)
-        V = self.W_V(x)
+        Q = self.q_proj(x)
+        K = self.k_proj(x)
+        V = self.v_proj(x)
 
         seq_len = x.shape[-2]
         q_positions = torch.arange(seq_len)[:, None]
@@ -162,24 +162,25 @@ class MultiheadSelfAttention(torch.nn.Module):
             Attn_res.append(scaled_dot_product_attention(q, k, v, mask))
 
         output = torch.concat(Attn_res, dim=-1)
-        return self.W_O(output)
+        return self.output_proj(output)
 
 class MultiheadSelfAttentionWithRoPE(torch.nn.Module):
-    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta: float, ):
+    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta: float):
         super().__init__()
         self.d_k = d_model // num_heads
         self.num_heads = num_heads
         self.RoPE = RotaryPositionalEmbedding(theta, self.d_k, max_seq_len)
 
-        self.W_Q = Linear(d_model, self.d_k * num_heads)
-        self.W_K = Linear(d_model, self.d_k * num_heads)
-        self.W_V = Linear(d_model, self.d_k * num_heads)
-        self.W_O = Linear(self.d_k * num_heads, d_model)
+        self.q_proj = Linear(d_model, self.d_k * num_heads)
+        self.k_proj = Linear(d_model, self.d_k * num_heads)
+        self.v_proj = Linear(d_model, self.d_k * num_heads)
+        self.output_proj = Linear(self.d_k * num_heads, d_model)
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
-        Q = self.W_Q(x)
-        K = self.W_K(x)
-        V = self.W_V(x)
+        
+        Q = self.q_proj(x)
+        K = self.k_proj(x)
+        V = self.v_proj(x)
 
         seq_len = x.shape[-2]
         q_positions = torch.arange(seq_len)[:, None]
@@ -197,4 +198,19 @@ class MultiheadSelfAttentionWithRoPE(torch.nn.Module):
             Attn_res.append(scaled_dot_product_attention(q, k, v, mask))
 
         output = torch.concat(Attn_res, dim=-1)
-        return self.W_O(output)
+        return self.output_proj(output)
+    
+class TransformerBlock(torch.nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, max_seq_len: int, theta: float):
+        super().__init__()
+
+        self.ln1 = RMSNorm(d_model)
+        self.attn = MultiheadSelfAttentionWithRoPE(d_model, num_heads, max_seq_len, theta)
+        self.ln2 = RMSNorm(d_model)
+        self.ffn = SwiGLU(d_model, d_ff)
+
+    def forward(self, in_features: torch.Tensor) -> torch.Tensor:
+        seq_len = in_features.shape[-2]
+        token_positions = torch.arange(0, seq_len)
+        mid1 = in_features + self.attn(self.ln1(in_features), token_positions)
+        return mid1 + self.ffn(self.ln2(mid1))
