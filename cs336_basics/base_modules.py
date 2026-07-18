@@ -214,3 +214,30 @@ class TransformerBlock(torch.nn.Module):
         token_positions = torch.arange(0, seq_len)
         mid1 = in_features + self.attn(self.ln1(in_features), token_positions)
         return mid1 + self.ffn(self.ln2(mid1))
+    
+
+class TransformerLM(torch.nn.Module):
+    def __init__(
+            self,
+            vocab_size: int,
+            context_length: int,
+            d_model: int,
+            num_layers: int,
+            num_heads: int,
+            d_ff: int,
+            rope_theta: float,
+    ):
+        super().__init__()
+
+        self.token_embeddings = Embedding(vocab_size, d_model)
+        self.layers = torch.nn.Sequential()
+        for i in range(num_layers):
+            self.layers.append(TransformerBlock(d_model, num_heads, d_ff, context_length, rope_theta))
+        self.ln_final = RMSNorm(d_model)
+        self.lm_head = Linear(d_model, vocab_size)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        embedded = self.token_embeddings(x)
+        attn_res = self.layers(embedded)
+        final = self.lm_head(self.ln_final(attn_res))
+        return final
