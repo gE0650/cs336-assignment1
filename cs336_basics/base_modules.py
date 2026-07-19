@@ -19,8 +19,8 @@ class Linear(torch.nn.Module):
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
-        # return torch.einsum("oi, ...i -> ...o", self.weight, x)
         return einops.einsum(self.weight, x, "out in, ... in -> ... out")
+        # (2 * x_para * out) FLOPs
     
 
 class Embedding(torch.nn.Module):
@@ -40,6 +40,7 @@ class Embedding(torch.nn.Module):
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
 
         return self.weight[token_ids]
+        # ~0 FLOPs
     
 class RMSNorm(torch.nn.Module):
     def __init__(self,
@@ -63,6 +64,7 @@ class RMSNorm(torch.nn.Module):
         inv_rms = 1 / rms
         x_scaled = einops.einsum(x, self.weight, inv_rms, "... d_model, d_model, ... -> ... d_model")
         return x_scaled.to(in_type)
+        # (3 * T * d_model) FLOPs
     
 class SwiGLU(torch.nn.Module):
     def __init__(self,
@@ -79,6 +81,7 @@ class SwiGLU(torch.nn.Module):
         mid2 = mid1 * torch.sigmoid(mid1)
         mid3 = einops.einsum(self.w3.weight, x, "out in, ... in -> ... out")
         return einops.einsum(mid2 * mid3, self.w2.weight, "... in, out in -> ... out")
+        # (6 * T * d_model * d_ff) FLOPs
     
 
 class RotaryPositionalEmbedding(torch.nn.Module):
@@ -109,12 +112,14 @@ class RotaryPositionalEmbedding(torch.nn.Module):
         out = torch.stack([new_odd, new_even], dim=-1)
         out = einops.rearrange(out, "... seq_len d_pair two -> ... seq_len (d_pair two)")
         return out
+        # ~ 0 FLOPs
 
 def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
     x_max = torch.max(x, dim=dim, keepdim=True).values
     x_shifted = x - x_max
     exp_x = torch.exp(x_shifted)
     return exp_x / torch.sum(exp_x, dim=dim, keepdim=True)
+    # ~ 0 FLOPs
 
 def scaled_dot_product_attention(
         queries: torch.Tensor,
@@ -131,6 +136,7 @@ def scaled_dot_product_attention(
     " -> ... q_len d_v")
 
     return output
+    # (2 * batch_size * q_len * k_len * (d_k + d_v)) FLOPs
 
 class MultiheadSelfAttention(torch.nn.Module):
     def __init__(self, d_model: int, num_heads: int):
@@ -163,6 +169,7 @@ class MultiheadSelfAttention(torch.nn.Module):
 
         output = torch.concat(Attn_res, dim=-1)
         return self.output_proj(output)
+        # (2 * num_heads * batch_size * len_q * len_k * (d_k + d_v)) FLOPs
 
 class MultiheadSelfAttentionWithRoPE(torch.nn.Module):
     def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta: float):
@@ -199,6 +206,7 @@ class MultiheadSelfAttentionWithRoPE(torch.nn.Module):
 
         output = torch.concat(Attn_res, dim=-1)
         return self.output_proj(output)
+        # (4 * batch_size * len_q * len_k * d_model + 8 * T * d_model^2 + 6 * T * d_model * d_ff) FLOPs
     
 class TransformerBlock(torch.nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int, max_seq_len: int, theta: float):
@@ -214,6 +222,7 @@ class TransformerBlock(torch.nn.Module):
         token_positions = torch.arange(0, seq_len)
         mid1 = in_features + self.attn(self.ln1(in_features), token_positions)
         return mid1 + self.ffn(self.ln2(mid1))
+        # (4 * d_model * batch_size * len_q * len_k + 8 * T * d_model^2 + 6 * T * d_model * d_ff) FLOPs
     
 
 class TransformerLM(torch.nn.Module):
@@ -241,3 +250,6 @@ class TransformerLM(torch.nn.Module):
         attn_res = self.layers(embedded)
         final = self.lm_head(self.ln_final(attn_res))
         return final
+        # T = batch_size * seq_len
+        # num_layers * d_model * T * (4 * seq_len + 6 * d_ff + 8 * d_model) 
+        # + 2 * T * d_model * vocab_size
