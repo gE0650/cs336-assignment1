@@ -1,6 +1,8 @@
 import torch
+import numpy as np
 from typing import Optional
 from collections.abc import Callable, Iterable
+import random
 # import einops
 import math
 
@@ -70,3 +72,14 @@ def gradClip(params: Iterable[torch.nn.Parameter], M: float):
             if param.grad is None:
                 continue
             param.grad *= factor
+
+def loadBatch(x: np.ndarray, batch_size: int, context_len: int, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+    total_len = x.shape[-1]
+    input_seq = []
+    target_seq = []
+    for i in range(batch_size):
+        start = random.randint(0, total_len - context_len - 1)
+        input_seq.append(torch.Tensor(x[start: start + context_len], device=device))
+        target_seq.append(torch.Tensor(x[start + 1 : start + context_len + 1], device=device))
+
+    return (torch.stack(input_seq), torch.stack(target_seq))
