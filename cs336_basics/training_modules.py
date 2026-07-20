@@ -58,3 +58,15 @@ def cosLRS(t, a_max, a_min, T_w, T_c) -> float:
         return a_min + 0.5 * (a_max - a_min) * (1 + math.cos(math.pi * (t - T_w) / (T_c - T_w)))
     else:
         return a_min
+    
+def gradClip(params: Iterable[torch.nn.Parameter], M: float):
+    grad_sum = 0
+    for param in params:
+        if param.grad is not None:
+            grad_sum += torch.sum(param.grad ** 2)
+    if grad_sum ** 0.5 > M:
+        factor = M / (grad_sum ** 0.5 + 1e-6)
+        for param in params:
+            if param.grad is None:
+                continue
+            param.grad *= factor
