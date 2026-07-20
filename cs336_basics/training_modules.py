@@ -50,3 +50,11 @@ class AdamW(torch.optim.Optimizer):
                 state["t"] = t + 1
 
         return loss
+    
+def cosLRS(t, a_max, a_min, T_w, T_c) -> float:
+    if t < T_w:
+        return a_max * t / T_w
+    elif t <= T_c:
+        return a_min + 0.5 * (a_max - a_min) * (1 + math.cos(math.pi * (t - T_w) / (T_c - T_w)))
+    else:
+        return a_min
