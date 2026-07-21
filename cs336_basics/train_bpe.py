@@ -65,26 +65,30 @@ def find_chunk_boundaries(
 
 def pretoken_from_chunk(
     PAT: str,
-    chunk: bytes,
+    input_path: str,
+    start: int,
+    end: int,
     special_tokens: list[str] | None = None
 ) -> dict[bytes, int]:
 
-    text = chunk.decode("utf-8")
+    with open(input_path, "rb") as f:
+        f.seek(start)
+        text = f.read(end - start).decode("utf-8")
     
-    # remove special tokens
-    if special_tokens:
-        escaped_tokens = [re.escape(token) for token in special_tokens]
-        separator_pattern = "|".join(escaped_tokens)
-        text_parts = re.split(separator_pattern, text)
-    else:
-        text_parts = [text]
+        # remove special tokens
+        if special_tokens:
+            escaped_tokens = [re.escape(token) for token in special_tokens]
+            separator_pattern = "|".join(escaped_tokens)
+            text_parts = re.split(separator_pattern, text)
+        else:
+            text_parts = [text]
 
-    # count pre_token num
-    res = {}
-    for text_part in text_parts:
-        for match in re.finditer(PAT, text_part):
-            pre_token_bytes = match.group(0).encode("utf-8")
-            res[pre_token_bytes] = res.get(pre_token_bytes, 0) + 1
+        # count pre_token num
+        res = {}
+        for text_part in text_parts:
+            for match in re.finditer(PAT, text_part):
+                pre_token_bytes = match.group(0).encode("utf-8")
+                res[pre_token_bytes] = res.get(pre_token_bytes, 0) + 1
 
     return res
 
@@ -100,7 +104,7 @@ def train_bpe(
     
     # chunknization
     
-    chunks = []
+    boundaries = []
     special_tokens_bytes = [token.encode("utf-8") for token in special_tokens]
 
     cpu_num = os.cpu_count() or 1
@@ -108,11 +112,9 @@ def train_bpe(
     with open(input_path, "rb") as f:
         # chunknize
         chunk_boundaries = find_chunk_boundaries(f, cpu_num, special_tokens_bytes)
-        
-        f.seek(0)
-        for i in range(1, len(chunk_boundaries)):
-            f.seek(chunk_boundaries[i - 1])
-            chunks.append(f.read(chunk_boundaries[i] - chunk_boundaries[i - 1]))
+
+        for i in range(0, len(chunk_boundaries) - 1):
+            boundaries.append(((chunk_boundaries[i], chunk_boundaries[i + 1])))
 
     
 
@@ -121,7 +123,7 @@ def train_bpe(
     num_of_processes = len(chunk_boundaries) - 1
     pre_tokens = {}
 
-    tasks = [(PAT, chunk, special_tokens) for chunk in chunks]
+    tasks = [(PAT, input_path, boundary[0], boundary[1], special_tokens) for boundary in boundaries]
     with Pool(processes=num_of_processes) as pool:
         results_pre_token = pool.starmap(pretoken_from_chunk, tasks)
 

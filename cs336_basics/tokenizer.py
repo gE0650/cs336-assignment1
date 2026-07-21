@@ -9,6 +9,8 @@ class Tokenizer:
         self.vocab = vocab
         self.merges = merges
         self.special_tokens = special_tokens
+        self.bytes_id = {token: id for (id, token) in self.vocab.items()}
+        self.merge_id = {merge: id for (id, merge) in enumerate(merges)}
 
     @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
@@ -36,6 +38,7 @@ class Tokenizer:
                     list_str = cleaned_line.split(" ")
                     merges.append((bytes([gpt2_byte_decoder[letter] for letter in list_str[0]]), bytes([gpt2_byte_decoder[letter] for letter in list_str[1]])))
 
+            
             return cls(vocab, merges, special_tokens)
 
     def encode(self, text: str) -> list[int]:
@@ -49,12 +52,12 @@ class Tokenizer:
             text_parts = [text]
 
         ids = []
-        #tokens_bytes = []
-        bytes_id = {token: id for (id, token) in self.vocab.items()}
+
+        
 
         for text_part in text_parts:
             if self.special_tokens and (text_part in self.special_tokens):
-                ids.append(bytes_id[text_part.encode("utf-8")])
+                ids.append(self.bytes_id[text_part.encode("utf-8")])
             else:
                 for match in re.finditer(PAT, text_part):
                     token_bytes = []
@@ -62,19 +65,19 @@ class Tokenizer:
                         letter_bytes = letter.encode("utf-8")
                         pieces = [bytes([byte_value]) for byte_value in letter_bytes]
                         token_bytes += pieces
-        
-                    for merge in self.merges:
-                        pairs = list(zip(token_bytes, token_bytes[1:]))
-                        i = 0
-                        while i < len(pairs):
-                            pair = pairs[i]
-                            if pair == merge:
-                                token_bytes[i] = token_bytes[i] + token_bytes[i + 1]
-                                del token_bytes[i + 1]
-                                pairs = list(zip(token_bytes, token_bytes[1:]))
-                            i += 1
-                
-                    ids.extend([bytes_id[token] for token in token_bytes])
+
+                    # merge 
+                    while len(token_bytes) > 1:
+                        ranked = [(pos, pair, self.merge_id.get(pair, len(self.vocab) + 1)) for (pos, pair) in enumerate(list(zip(token_bytes, token_bytes[1:])))]
+                        target = min(ranked, key=lambda x: (x[2], x[0]))
+                        if target[2] == len(self.vocab) + 1:
+                            break
+                        pos = target[0]
+                        token_bytes[pos] = token_bytes[pos] + token_bytes[pos + 1]
+                        del token_bytes[pos + 1]
+
+                    
+                    ids.extend([self.bytes_id[token] for token in token_bytes])
 
         
         
