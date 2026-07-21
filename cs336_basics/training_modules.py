@@ -1,6 +1,7 @@
 import torch
 import numpy as np
-from typing import Optional
+import os
+from typing import Optional, IO, Any, BinaryIO
 from collections.abc import Callable, Iterable
 import random
 # import einops
@@ -73,13 +74,33 @@ def gradClip(params: Iterable[torch.nn.Parameter], M: float):
                 continue
             param.grad *= factor
 
+
 def loadBatch(x: np.ndarray, batch_size: int, context_len: int, device: str) -> tuple[torch.Tensor, torch.Tensor]:
+    # use "cpu" as str
     total_len = x.shape[-1]
     input_seq = []
     target_seq = []
     for i in range(batch_size):
         start = random.randint(0, total_len - context_len - 1)
-        input_seq.append(torch.Tensor(x[start: start + context_len], device=device))
-        target_seq.append(torch.Tensor(x[start + 1 : start + context_len + 1], device=device))
+        input_seq.append(torch.as_tensor(x[start: start + context_len], device=device))
+        target_seq.append(torch.as_tensor(x[start + 1 : start + context_len + 1], device=device))
+        # may need to initialize dtype
 
     return (torch.stack(input_seq), torch.stack(target_seq))
+
+
+def saveCheckPoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, iteration: int, 
+                   out: str | os.PathLike | BinaryIO | IO[bytes]):
+    model_state = model.state_dict()
+    optimizer_state = optimizer.state_dict()
+    all_states = {"iteration": iteration,
+                  "model": model_state,
+                  "optimizer": optimizer_state}
+    torch.save(all_states, out)
+
+def loadCheckPoint(src: str | os.PathLike | BinaryIO | IO[bytes], 
+                   model: torch.nn.Module, optimizer: torch.optim.Optimizer) -> int:
+    all_states = torch.load(src)
+    model.load_state_dict(all_states["model"])
+    optimizer.load_state_dict(all_states["optimizer"])
+    return all_states["iteration"]
