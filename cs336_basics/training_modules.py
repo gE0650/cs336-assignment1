@@ -10,7 +10,7 @@ import math
 def crossEntrophy(predicted: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     max_pre = torch.max(predicted, dim=-1, keepdim=True).values
     shifted_pre = predicted - max_pre
-    log_sum_exp = torch.logsumexp(shifted_pre, dim=-1)
+    log_sum_exp = torch.logsumexp(shifted_pre, dim=-1, keepdim=True)
     loss = log_sum_exp - torch.gather(shifted_pre, -1, target[..., None])
     return torch.mean(loss)
 
@@ -82,8 +82,8 @@ def loadBatch(x: np.ndarray, batch_size: int, context_len: int, device: str) -> 
     target_seq = []
     for i in range(batch_size):
         start = random.randint(0, total_len - context_len - 1)
-        input_seq.append(torch.as_tensor(x[start: start + context_len], device=device))
-        target_seq.append(torch.as_tensor(x[start + 1 : start + context_len + 1], device=device))
+        input_seq.append(torch.as_tensor(x[start: start + context_len], dtype=torch.long, device=device))
+        target_seq.append(torch.as_tensor(x[start + 1 : start + context_len + 1], dtype=torch.long, device=device))
         # may need to initialize dtype
 
     return (torch.stack(input_seq), torch.stack(target_seq))
