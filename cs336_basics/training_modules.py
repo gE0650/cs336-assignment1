@@ -99,8 +99,9 @@ def saveCheckPoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, ite
     torch.save(all_states, out)
 
 def loadCheckPoint(src: str | os.PathLike | BinaryIO | IO[bytes], 
-                   model: torch.nn.Module, optimizer: torch.optim.Optimizer) -> int:
+                   model: torch.nn.Module, optimizer: torch.optim.Optimizer | None = None) -> int:
     all_states = torch.load(src)
     model.load_state_dict(all_states["model"])
-    optimizer.load_state_dict(all_states["optimizer"])
+    if optimizer is not None:
+        optimizer.load_state_dict(all_states["optimizer"])
     return all_states["iteration"]

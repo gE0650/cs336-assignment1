@@ -11,13 +11,15 @@ parser.add_argument("--resume-from", required=False, help="resume from model dat
 
 
 parser.add_argument("--batch-size", required=True, help="batch size", type=int)
-parser.add_argument("--vocab-size", required=True, help="vocabulary size", type=int)
 parser.add_argument("--iter-num", required=True, help="iteration number", type=int)
+
+parser.add_argument("--vocab-size", required=True, help="vocabulary size", type=int)
 parser.add_argument("--context-len", required=True, help="context length", type=int)
 parser.add_argument("--d-model", required=True, help="d_model", type=int)
+parser.add_argument("--num-layer", required=True, help="num_layer", type=int)
 parser.add_argument("--num-heads", required=True, help="num_head", type=int)
 parser.add_argument("--theta", required=True, help="rope theta", type=float)
-parser.add_argument("--num-layer", required=True, help="num_layer", type=int)
+
 
 parser.add_argument("--weight-decay", required=True, help="weight decay", type=float)
 parser.add_argument("--b1", required=True, help="beta1", type=float)
@@ -39,13 +41,16 @@ resume_path = args.resume_from
 
 batch_size = args.batch_size
 iter_num = args.iter_num
-context_len = args.context_len
+
+
 device = args.device
 vocab_size = args.vocab_size
+context_len = args.context_len
 d_model = args.d_model
-num_heads = args.num_heads
 num_layer = args.num_layer
+num_heads = args.num_heads
 theta = args.theta
+
 
 weight_decay = args.weight_decay
 betas = (args.b1, args.b2)
@@ -58,7 +63,7 @@ T_c = args.T_c
 
 d_ff = (d_model * 8 // 3 // 64) * 64 # must modify
 
-
+config = (vocab_size, context_len, d_model, num_layer, num_heads, d_ff, theta)
 
 tokenized_data = np.memmap(input_path, dtype=np.uint16, mode="r")
 
@@ -85,8 +90,9 @@ while iter < iter_num:
         group["lr"] = cosLRS(iter, a_max, a_min, T_w, T_c)
     optimizer.step()
 
-    if iter % 10 == 0:
-        saveCheckPoint(transLM, optimizer, iter, output_path + "_" + f"{iter}")
+    if iter % 5 == 0:
+        if iter % 50 == 0:
+            saveCheckPoint(transLM, optimizer, iter, output_path + "_" + f"{iter}")
         print(f"iter: {iter}, loss: {loss}")
 
     transLM.zero_grad()

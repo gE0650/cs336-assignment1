@@ -19,7 +19,7 @@ class Linear(torch.nn.Module):
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
-        return einops.einsum(self.weight, x, "out in, ... in -> ... out")
+        return einops.einsum(self.weight, x, "out input, ... input -> ... out")
         # (2 * x_para * out) FLOPs
     
 
@@ -77,10 +77,10 @@ class SwiGLU(torch.nn.Module):
         self.w3 = Linear(d_model, d_ff)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        mid1 = einops.einsum(self.w1.weight, x, "out in, ... in -> ... out")
+        mid1 = einops.einsum(self.w1.weight, x, "out input, ... input -> ... out")
         mid2 = mid1 * torch.sigmoid(mid1)
-        mid3 = einops.einsum(self.w3.weight, x, "out in, ... in -> ... out")
-        return einops.einsum(mid2 * mid3, self.w2.weight, "... in, out in -> ... out")
+        mid3 = einops.einsum(self.w3.weight, x, "out input, ... input -> ... out")
+        return einops.einsum(mid2 * mid3, self.w2.weight, "... input, out input -> ... out")
         # (6 * T * d_model * d_ff) FLOPs
     
 
