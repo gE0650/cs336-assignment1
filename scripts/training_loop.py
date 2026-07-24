@@ -1,6 +1,7 @@
 
 import argparse, torch
 import numpy as np
+from torch.utils.tensorboard import SummaryWriter
 from cs336_basics.base_modules import TransformerLM
 from cs336_basics.training_modules import loadBatch, AdamW, crossEntrophy, gradClip, cosLRS, saveCheckPoint, loadCheckPoint
 
@@ -8,6 +9,7 @@ parser = argparse.ArgumentParser(description="Training loop")
 parser.add_argument("--input", required=True, help="tokenized input")
 parser.add_argument("--output", required=True, help="output model data")
 parser.add_argument("--resume-from", required=False, help="resume from model data")
+parser.add_argument("--log-dir", required=True, help="name of log dir")
 
 
 parser.add_argument("--batch-size", required=True, help="batch size", type=int)
@@ -38,6 +40,7 @@ args = parser.parse_args()
 input_path = args.input
 output_path = args.output
 resume_path = args.resume_from
+log_dir = args.log_dir
 
 batch_size = args.batch_size
 iter_num = args.iter_num
@@ -65,15 +68,17 @@ d_ff = (d_model * 8 // 3 // 64) * 64 # must modify
 
 config = (vocab_size, context_len, d_model, num_layer, num_heads, d_ff, theta)
 
-tokenized_data = np.memmap(input_path, dtype=np.uint16, mode="r")
+tokenized_data = np.memmap(f"results/tokenized_text/{input_path}", dtype=np.uint16, mode="r")
 
 transLM = TransformerLM(vocab_size, context_len, d_model, num_layer, num_heads, d_ff, theta).to(device)
 optimizer = AdamW(transLM.parameters(), 0, weight_decay, betas, 1e-8)
 
+writer = SummaryWriter(log_dir=f"results/tensorboard/{log_dir}")
+
 iter = 0
 
 if resume_path is not None:
-    iter = loadCheckPoint(resume_path, transLM, optimizer) + 1
+    iter = loadCheckPoint(f"results/checkpoints/{resume_path}", transLM, optimizer) + 1
 
 
 
@@ -92,8 +97,20 @@ while iter < iter_num:
 
     if iter % 5 == 0:
         if iter % 50 == 0:
-            saveCheckPoint(transLM, optimizer, iter, output_path + "_" + f"{iter}")
-        print(f"iter: {iter}, loss: {loss}")
+            saveCheckPoint(transLM, optimizer, iter, f"results/checkpoints/{output_path}_{iter + 1}")
+
+        with torch.no_grad():
+            (valid_input_tokens, valid_target) = loadBatch(tokenized_data, batch_size, context_len, device)
+            valid_result = transLM(valid_input_tokens)
+            valid_loss = crossEntrophy(valid_result, valid_target)
+
+        loss_dict = {
+            "train": loss.detach().item(),
+            "valid": valid_loss.detach().item(),
+        }
+        writer.add_scalars("loss", loss_dict, iter + 1)
 
     transLM.zero_grad()
     iter += 1
+
+writer.close()

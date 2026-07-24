@@ -15,7 +15,7 @@ output_path = args.output
 
 # create Tokenizer instance
 
-tokenizer_data = torch.load(tokenizer_input_path)
+tokenizer_data = torch.load(f"results/tokenizer/{tokenizer_input_path}")
 merges = tokenizer_data["merges"]
 vocab = tokenizer_data["vocab"]
 special_tokens = tokenizer_data["special_tokens"]
@@ -23,8 +23,8 @@ special_tokens = tokenizer_data["special_tokens"]
 tokenizer = Tokenizer(vocab, merges, special_tokens)
 
 # stream tokenize
-with open(file_input_path, "r", encoding="utf-8") as file_in:
-    with open(output_path, "wb") as file_out:
+with open(f"data/{file_input_path}", "r", encoding="utf-8") as file_in:
+    with open(f"results/tokenized_text/{output_path}", "wb") as file_out:
         tokenize_res = tokenizer.encode_iterable(file_in)
         counter = 0
         chunk_size = 100_000 # hyperpamameter

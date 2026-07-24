@@ -17,10 +17,10 @@ vocab_size = args.vocab_size
 
 special_tokens = ["<|endoftext|>"] # may need to modify
 
-vocab, merges = train_bpe(input_path, vocab_size, special_tokens)
+vocab, merges = train_bpe(f"data/{input_path}", vocab_size, special_tokens)
 
 res = {"vocab": vocab,
        "merges": merges,
        "special_tokens": special_tokens}
 
-torch.save(res, output_path)
+torch.save(res, f"results/tokenizer/{output_path}")

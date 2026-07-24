@@ -46,7 +46,7 @@ d_ff = (d_model * 8 // 3 // 64) * 64 # must modify
 
 # create Tokenizer instance
 
-tokenizer_data = torch.load(tokenizer_input_path)
+tokenizer_data = torch.load(f"results/tokenizer/{tokenizer_input_path}")
 merges = tokenizer_data["merges"]
 vocab = tokenizer_data["vocab"]
 special_tokens = tokenizer_data["special_tokens"]
@@ -58,10 +58,10 @@ tokenizer = Tokenizer(vocab, merges, special_tokens)
 
 transLM = TransformerLM(vocab_size, context_len, d_model, num_layer, num_heads, d_ff, theta).to(device)
 
-loadCheckPoint(model_path, transLM)
+loadCheckPoint(f"results/checkpoints/{model_path}", transLM)
 
 
-with open(prefix_path, "r") as f:
+with open(f"results/prompts/{prefix_path}", "r") as f:
     text = f.read()
 
 encoded_text = tokenizer.encode(text)
@@ -97,5 +97,5 @@ with torch.no_grad():
 
 output_text = tokenizer.decode(encoded_text)
 
-with open(output_path, "w", encoding="utf-8") as f:
+with open(f"results/generated_text/{output_path}", "w", encoding="utf-8") as f:
     f.write(output_text)
